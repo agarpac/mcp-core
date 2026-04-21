@@ -14,6 +14,8 @@ Resultado: una instancia compartida por todos los clientes, sin duplicar proceso
 #    y migra los MCPs que ya tengas configurados
 npx mcp-core init
 
+# Detecta las entradas legacy, las importa al registro central y reemplaza todo por la única entrada del gateway. Un backup `.backup` se crea antes de sobreescribir.
+
 # 2) Instala un servidor MCP — disponible en todos los clientes al instante
 npx mcp-core install @modelcontextprotocol/server-memory
 ```
@@ -179,16 +181,6 @@ npx vitest run      # Suite completa
 ```
 
 `npm run setup` deja los dos binarios (`mcp-core`, `mcp-core-mcp`) disponibles en el PATH.
-
-## Migración desde v1
-
-Si tenías `mcp-core` v1 con entradas `mcp-proxy` en tus clientes, ejecuta:
-
-```bash
-mcp-core init
-```
-
-Detecta las entradas legacy, las importa al registro central y reemplaza todo por la única entrada del gateway. Un backup `.backup` se crea antes de sobreescribir.
 
 ## Licencia
 MIT
