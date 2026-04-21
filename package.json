@@ -1,0 +1,57 @@
+{
+  "name": "mcp-core",
+  "version": "2.0.0",
+  "description": "Gateway MCP: una única entrada por cliente que reexpone todos tus backends con prefijo. Un daemon compartido, todas las tools disponibles en todos tus clientes de IA.",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "gateway",
+    "daemon",
+    "ai",
+    "claude",
+    "cursor",
+    "opencode"
+  ],
+  "bin": {
+    "mcp-core": "dist/cli/index.js",
+    "mcp-core-mcp": "dist/mcp/server.js"
+  },
+  "files": [
+    "dist",
+    "dashboard/dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc && npm run build --prefix dashboard",
+    "setup": "npm install && npm install --prefix dashboard && npm run build && npm link",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run"
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@types/supertest": "^7.2.0",
+    "jsdom": "^29.0.2",
+    "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "commander": "^14.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "execa": "^9.6.1",
+    "express": "^5.2.1",
+    "jsonrpc-lite": "^2.2.0"
+  }
+}

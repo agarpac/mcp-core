@@ -1,0 +1,39 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependency directories
+node_modules/
+
+# Build and compiled files
+dist/
+build/
+coverage/
+
+# Generated vitest configs
+vitest.config.js
+vitest.config.js.map
+vitest.config.d.ts
+vitest.config.d.ts.map
+
+# OS Files
+.DS_Store
+*.pem
+
+# Environment variables
+.env
+.env.test
+.env.production
+.env.local
+
+# Editor directories and files
+.vscode/
+.idea/
+
+# AI / Agent specific
+.claude/
+.atl/
