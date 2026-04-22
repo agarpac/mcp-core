@@ -1,7 +1,7 @@
 # mcp-core ⚡️
 **Gateway MCP — un único punto de entrada para todos tus servidores**
 
-![MCP Core Dashboard](ui-preview.png)
+![MCP Core Dashboard](ui-preview2.png)
 
 `mcp-core` pone **una sola entrada** en cada cliente de IA (Cursor, Claude Desktop, VS Code…) y desde ahí expone todos los servidores MCP que tengas instalados. En lugar de que cada cliente gestione sus propias conexiones, hay un daemon central que mantiene una instancia por servidor — compartida entre todos los clientes.
 
