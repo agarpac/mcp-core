@@ -13,18 +13,20 @@ El cliente ve herramientas prefijadas por servidor: `context7__get_library_docs`
 
 ```bash
 # 1) Bootstrap: inyecta la entrada del gateway en todos los clientes detectados
+#     Detecta las entradas legacy, las importa al registro central y reemplaza todo
+#     por la única entrada del gateway. Un backup `.backup` se crea antes de sobreescribir.
 npx mcp-core init
 
-# Detecta las entradas legacy, las importa al registro central y reemplaza todo por la única entrada del gateway. Un backup `.backup` se crea antes de sobreescribir.
-
-# 2) Instala un servidor MCP — disponible en todos los clientes al instante
+# 2) (Opcional) Instala un servidor MCP — disponible en todos los clientes al instante
+#     o haz esto desde el paso 4 desde la interfaz UI.
 npx mcp-core install @modelcontextprotocol/server-memory
 
 # 3) (Opcional) Si ya tenías servidores MCP configurados en otros clientes,
-#    mígralos a ~/.mcp-core/servers/ para que sean independientes de esos clientes
+#     se migran a ~/.mcp-core/servers/ para que sean independientes de esos clientes
+#     usa `--dry-run` para ver exactamente qué se haría sin tocar nada.
 npx mcp-core migrate
 
-# 4) (Opcional) Abre el dashboard web para gestionar servidores visualmente
+# 4) (Opcional) Abre el dashboard web para gestionar servidores visualmente.
 npx mcp-core ui
 ```
 
@@ -83,7 +85,7 @@ Las 5 tools de control del gateway viven bajo el prefijo `mcp_core__`: `install_
 | **VS Code / Copilot** | `~/Library/Application Support/Code/User/mcp.json` | `~/.config/Code/User/mcp.json` | `servers` |
 | **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | — | `mcpServers` |
 | **Claude Code** | `~/.claude.json` | `~/.claude.json` | `mcpServers` |
-| **OpenCode** | `~/.config/opencode/opencode.json` | `~/.config/opencode/opencode.json` | `mcp` |
+| **OpenCode (cli)** | `~/.config/opencode/opencode.json` | `~/.config/opencode/opencode.json` | `mcp` |
 
 > **Windows**: fuera del alcance actual.
 
