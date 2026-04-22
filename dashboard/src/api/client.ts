@@ -108,7 +108,7 @@ export function fetchClients(): Promise<ClientInfo[]> {
   return fetch('/api/clients', { headers: authHeaders() }).then(handle<ClientInfo[]>);
 }
 
-export function install(body: { source: string; name?: string }): Promise<{ success: boolean }> {
+export function install(body: { source: string; name?: string; env?: Record<string, string>; method?: string }): Promise<{ success: boolean }> {
   return fetch('/api/install', {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),

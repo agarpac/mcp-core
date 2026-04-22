@@ -303,6 +303,7 @@ describe('gateway MCP server — tool forwarding', () => {
         content: [{ type: 'text', text: 'stored' }],
       }),
       close: vi.fn(),
+      isClosed: vi.fn().mockReturnValue(false),
     };
 
     const backends: BackendInfo[] = [
@@ -408,6 +409,7 @@ describe('gateway MCP server — dynamic updates', () => {
     const mockBackend: BackendClient = {
       sendRequest: vi.fn(),
       close: vi.fn(),
+      isClosed: vi.fn().mockReturnValue(false),
     };
 
     const initialBackends: BackendInfo[] = [
@@ -434,6 +436,107 @@ describe('gateway MCP server — dynamic updates', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(mockBackend.close).toHaveBeenCalled();
+
+    await client.close();
+    await gateway.server.close();
+  });
+
+  it('clears pool and re-attaches meta-client when daemon connection closes (daemon restart)', async () => {
+    const initialBackend: BackendClient = {
+      sendRequest: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'first' }] }),
+      close: vi.fn(),
+      isClosed: vi.fn().mockReturnValue(false),
+    };
+    const afterRestartBackend: BackendClient = {
+      sendRequest: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'second' }] }),
+      close: vi.fn(),
+      isClosed: vi.fn().mockReturnValue(false),
+    };
+
+    const backends: BackendInfo[] = [
+      { name: 'memory', tools: [{ name: 'store' }], resources: [], prompts: [] },
+    ];
+
+    let metaClientCount = 0;
+    let firstMeta: DaemonMetaClient | null = null;
+    let secondMeta: DaemonMetaClient | null = null;
+    let backendCount = 0;
+
+    const gateway = createGatewayServer({
+      _metaClientFactory: async () => {
+        const mc = makeMockMetaClient(backends);
+        if (metaClientCount++ === 0) firstMeta = mc;
+        else secondMeta = mc;
+        return mc;
+      },
+      _backendClientFactory: async () =>
+        backendCount++ === 0 ? initialBackend : afterRestartBackend,
+    });
+    await gateway.start();
+    const client = await connectMcpClient(gateway);
+
+    // Primera llamada: usa initialBackend via first meta-client
+    await client.callTool({ name: 'memory__store', arguments: {} });
+    expect(initialBackend.sendRequest).toHaveBeenCalledTimes(1);
+
+    // Simula daemon restart: el meta-client actual emite 'close'
+    firstMeta!.emit('close');
+    await new Promise((r) => setTimeout(r, 20));
+
+    // El pool debería haberse limpiado (initialBackend cerrado)
+    expect(initialBackend.close).toHaveBeenCalled();
+    // Un nuevo meta-client debería haberse creado (reconexión)
+    expect(metaClientCount).toBe(2);
+    expect(secondMeta).not.toBeNull();
+
+    // Siguiente llamada: usa afterRestartBackend, no el stale
+    const result = await client.callTool({ name: 'memory__store', arguments: {} });
+    expect(result.isError).not.toBe(true);
+    expect(afterRestartBackend.sendRequest).toHaveBeenCalledTimes(1);
+    expect(initialBackend.sendRequest).toHaveBeenCalledTimes(1); // no se volvió a usar
+
+    await client.close();
+    await gateway.server.close();
+  });
+
+  it('reconnects when cached backend client is closed (auto-shutdown scenario)', async () => {
+    let callCount = 0;
+    let staleIsClosedValue = false;
+    const staleBackend: BackendClient = {
+      sendRequest: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'first' }] }),
+      close: vi.fn(),
+      isClosed: vi.fn(() => staleIsClosedValue),
+    };
+    const freshBackend: BackendClient = {
+      sendRequest: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'second' }] }),
+      close: vi.fn(),
+      isClosed: vi.fn().mockReturnValue(false),
+    };
+
+    const backends: BackendInfo[] = [
+      { name: 'memory', tools: [{ name: 'store' }], resources: [], prompts: [] },
+    ];
+
+    const gateway = createGatewayServer({
+      _metaClientFactory: async () => makeMockMetaClient(backends),
+      _backendClientFactory: async () => (callCount++ === 0 ? staleBackend : freshBackend),
+    });
+    await gateway.start();
+    const client = await connectMcpClient(gateway);
+
+    // Primera llamada: crea y usa staleBackend (isClosed = false)
+    await client.callTool({ name: 'memory__store', arguments: {} });
+    expect(staleBackend.sendRequest).toHaveBeenCalledTimes(1);
+
+    // Simula auto-shutdown: staleBackend queda cerrado
+    staleIsClosedValue = true;
+
+    // Segunda llamada: detecta staleBackend cerrado, crea freshBackend
+    const result = await client.callTool({ name: 'memory__store', arguments: {} });
+
+    expect(result.isError).not.toBe(true);
+    expect(staleBackend.sendRequest).toHaveBeenCalledTimes(1); // no volvió a llamarse
+    expect(freshBackend.sendRequest).toHaveBeenCalledTimes(1);
 
     await client.close();
     await gateway.server.close();

@@ -2,12 +2,36 @@ import { useState } from 'react';
 import { install } from '../api/client';
 import { Progress } from './Progress';
 
-export function AdvancedInstaller() {
+interface EnvEntry {
+  key: string;
+  value: string;
+}
+
+interface Props {
+  onInstallSuccess?: () => void;
+}
+
+export function AdvancedInstaller({ onInstallSuccess }: Props) {
   const [source, setSource] = useState('');
   const [method, setMethod] = useState<'auto' | 'npm' | 'uvx' | 'git' | 'local'>('auto');
+  const [envEntries, setEnvEntries] = useState<EnvEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<{ name: string; tools?: number } | null>(null);
+
+  const addEnvEntry = () => setEnvEntries((prev) => [...prev, { key: '', value: '' }]);
+
+  const removeEnvEntry = (index: number) =>
+    setEnvEntries((prev) => prev.filter((_, i) => i !== index));
+
+  const updateEnvEntry = (index: number, field: 'key' | 'value', val: string) =>
+    setEnvEntries((prev) => prev.map((e, i) => (i === index ? { ...e, [field]: val } : e)));
+
+  const buildEnvMap = (): Record<string, string> | undefined => {
+    const entries = envEntries.filter((e) => e.key.trim() !== '');
+    if (entries.length === 0) return undefined;
+    return Object.fromEntries(entries.map((e) => [e.key.trim(), e.value]));
+  };
 
   const handleInstall = async () => {
     if (!source) return;
@@ -15,11 +39,17 @@ export function AdvancedInstaller() {
     setError(null);
     setLastResult(null);
     try {
-      const res: any = await install({ source, ...(method !== 'auto' ? { method } : {}) } as any);
+      const env = buildEnvMap();
+      const res: any = await install({
+        source,
+        ...(method !== 'auto' ? { method } : {}),
+        ...(env ? { env } : {}),
+      });
       setLastResult({
         name: res.name,
         tools: res.validation?.tools,
       });
+      onInstallSuccess?.();
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -55,6 +85,54 @@ export function AdvancedInstaller() {
             <option value="local">Local</option>
           </select>
         </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">
+              Environment Variables
+            </label>
+            <button
+              type="button"
+              onClick={addEnvEntry}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              + Add variable
+            </button>
+          </div>
+          {envEntries.length === 0 ? (
+            <p className="text-xs text-gray-500">No environment variables. Click "Add variable" to add one.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {envEntries.map((entry, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="KEY"
+                    className="w-2/5 bg-gray-900 border border-gray-600 rounded-md px-3 py-1.5 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-500 font-mono"
+                    value={entry.key}
+                    onChange={(e) => updateEnvEntry(i, 'key', e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    placeholder="value"
+                    className="flex-1 bg-gray-900 border border-gray-600 rounded-md px-3 py-1.5 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-500"
+                    value={entry.value}
+                    onChange={(e) => updateEnvEntry(i, 'value', e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeEnvEntry(i)}
+                    className="text-gray-500 hover:text-red-400 transition-colors text-lg leading-none"
+                    aria-label="Remove"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button
           onClick={handleInstall}
           disabled={loading}

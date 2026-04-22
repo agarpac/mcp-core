@@ -71,7 +71,11 @@ function LogsModal({ name, onClose }: { name: string; onClose: () => void }) {
   );
 }
 
-export function ActiveServersMonitor() {
+interface Props {
+  refreshKey?: number;
+}
+
+export function ActiveServersMonitor({ refreshKey }: Props) {
   const [servers, setServers] = useState<ServerData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +88,7 @@ export function ActiveServersMonitor() {
   const [pausing, setPausing] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
       fetchServers().then((json) =>
         Object.entries(json).map(([name, config]: [string, any]) => ({
@@ -102,7 +107,7 @@ export function ActiveServersMonitor() {
       })
       .catch(() => setError('Failed to load active servers'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   const pollProcessState = useCallback(() => {
     return fetchActiveServers().then(setProcessState).catch(() => {});

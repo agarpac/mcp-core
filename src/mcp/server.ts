@@ -65,6 +65,7 @@ export interface DaemonMetaClient extends EventEmitter {
 export interface BackendClient {
   sendRequest(method: string, params?: unknown): Promise<unknown>;
   close(): void;
+  isClosed(): boolean;
 }
 
 export interface GatewayOptions {
@@ -145,6 +146,7 @@ class RealBackendClient implements BackendClient {
     { resolve: (r: unknown) => void; reject: (e: unknown) => void }
   >();
   private counter = 0;
+  private _closed = false;
 
   constructor(socket: net.Socket) {
     this.socket = socket;
@@ -164,12 +166,16 @@ class RealBackendClient implements BackendClient {
       } catch { /* ignore */ }
     });
     socket.on('close', () => {
+      this._closed = true;
       for (const cb of this.pending.values()) {
         cb.reject(new Error('daemon connection closed'));
       }
       this.pending.clear();
     });
+    socket.on('error', () => { this.socket.destroy(); });
   }
+
+  isClosed(): boolean { return this._closed; }
 
   sendRequest(method: string, params?: unknown): Promise<unknown> {
     const id = ++this.counter;
@@ -546,7 +552,10 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
 
   async function getOrCreateBackendClient(backendName: string): Promise<BackendClient> {
     const existing = backendPool.get(backendName);
-    if (existing) return existing;
+    if (existing) {
+      if (!existing.isClosed()) return existing;
+      backendPool.delete(backendName);
+    }
     const client = await backendFactory(socketPath, backendName, spawnFn);
     backendPool.set(backendName, client);
     return client;
@@ -555,9 +564,14 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
   /* ---- Lifecycle ---- */
 
   async function start(): Promise<void> {
-    metaClient = await metaFactory(socketPath, spawnFn);
+    await connectMetaClient(true);
+  }
 
-    metaClient.on('backends_changed', async (backends: BackendInfo[]) => {
+  async function connectMetaClient(initial: boolean): Promise<void> {
+    const mc = await metaFactory(socketPath, spawnFn);
+    metaClient = mc;
+
+    mc.on('backends_changed', async (backends: BackendInfo[]) => {
       const newNames = new Set(backends.map((b) => b.name));
       for (const [name, client] of backendPool) {
         if (!newNames.has(name)) {
@@ -575,8 +589,30 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
       }
     });
 
-    const backends = await metaClient.listBackends();
+    mc.on('close', () => {
+      if (metaClient !== mc) return;
+      metaClient = null;
+      // Daemon connection lost — every pooled BackendClient is stale
+      for (const client of backendPool.values()) client.close();
+      backendPool.clear();
+      // Reconnect in the background; connectWithBackoff retries + respawns daemon
+      connectMetaClient(false).catch(() => { /* unrecoverable */ });
+    });
+
+    mc.on('error', () => { /* surfaced via 'close' */ });
+
+    const backends = await mc.listBackends();
     updateRegistries(backends);
+
+    if (!initial) {
+      try {
+        await mcpServer.sendToolListChanged();
+        await mcpServer.sendResourceListChanged();
+        await mcpServer.sendPromptListChanged();
+      } catch {
+        // Not connected yet or client disconnected — safe to ignore
+      }
+    }
   }
 
   async function stop(): Promise<void> {
