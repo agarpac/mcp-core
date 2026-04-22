@@ -161,11 +161,47 @@ describe('runInstall — method selection (npm / uvx / git / auto)', () => {
     expect(cfg.command).toBe('uvx');
   });
 
-  it('uses npm when method is npm', async () => {
+  it('uses npm — installs to shared node_modules and stores node + absolute path', async () => {
     await runInstall('@modelcontextprotocol/server-memory', 'memory', undefined, { method: 'npm' });
     const [, cfg] = addServerMock.mock.calls[0]!;
-    expect(cfg.command).toBe('npx');
-    expect(cfg.args).toContain('@modelcontextprotocol/server-memory');
+    expect(cfg.command).toBe('node');
+    expect(cfg.args[0]).toContain('@modelcontextprotocol/server-memory');
+    expect(cfg.args[0]).toMatch(/\.js$/);
+    // path must NOT contain a per-server subdirectory — goes to shared node_modules
+    expect(cfg.args[0]).toContain(path.join('node_modules', '@modelcontextprotocol'));
+  });
+
+  it('calls npm install <package> in SERVERS_DIR (shared)', async () => {
+    await runInstall('@modelcontextprotocol/server-memory', 'memory', undefined, { method: 'npm' });
+    const npmCall = execaMock.mock.calls.find(
+      (c) => c[0] === 'npm' &&
+        (c[1] as string[])[0] === 'install' &&
+        (c[1] as string[])[1] === '@modelcontextprotocol/server-memory'
+    );
+    expect(npmCall).toBeDefined();
+    // cwd must be SERVERS_DIR (shared), not a per-server subdirectory
+    expect((npmCall as any)[2]?.cwd).toBe('/tmp/mcp-core-servers');
+  });
+
+  it('stores pkgName for npm packages to enable clean uninstall', async () => {
+    await runInstall('@modelcontextprotocol/server-memory', 'memory', undefined, { method: 'npm' });
+    const [, cfg] = addServerMock.mock.calls[0]!;
+    expect(cfg.pkgName).toBe('@modelcontextprotocol/server-memory');
+  });
+
+  it('does NOT store pkgName for non-npm methods', async () => {
+    await runInstall('some-python-mcp', 'py', undefined, { method: 'uvx' });
+    const [, cfg] = addServerMock.mock.calls[0]!;
+    expect(cfg.pkgName).toBeUndefined();
+  });
+
+  it('stores kind matching the install method', async () => {
+    await runInstall('@scope/pkg', 'pkg', undefined, { method: 'npm' });
+    expect(addServerMock.mock.calls[0]![1].kind).toBe('npm');
+
+    addServerMock.mockClear(); execaMock.mockClear();
+    await runInstall('mcp-server-pg', 'pg', undefined, { method: 'uvx' });
+    expect(addServerMock.mock.calls[0]![1].kind).toBe('uvx');
   });
 });
 

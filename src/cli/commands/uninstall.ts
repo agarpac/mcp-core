@@ -8,8 +8,9 @@ import { notifyDaemon } from '../../daemon/notify';
 export async function runUninstall(name: string) {
   ConfigStore.initialize();
   const state = ConfigStore.get();
+  const cfg = state.servers[name];
 
-  if (!state.servers[name]) {
+  if (!cfg) {
     throw new Error(`El servidor '${name}' no está registrado en mcp-core.`);
   }
 
@@ -18,10 +19,18 @@ export async function runUninstall(name: string) {
   ConfigStore.removeServer(name);
   console.log(`✅ Registro central eliminado.`);
 
-  const repoDir = path.join(SERVERS_DIR, name);
-  if (fs.existsSync(repoDir)) {
-    fs.rmSync(repoDir, { recursive: true, force: true });
-    console.log(`✅ Archivos locales eliminados (${repoDir}).`);
+  if (cfg.pkgName) {
+    // npm-installed: remove from the shared node_modules via npm uninstall
+    const { execa } = await import('execa');
+    await execa('npm', ['uninstall', cfg.pkgName], { cwd: SERVERS_DIR });
+    console.log(`✅ Paquete npm eliminado (${cfg.pkgName}).`);
+  } else {
+    // git/local-installed: remove the per-server directory
+    const repoDir = path.join(SERVERS_DIR, name);
+    if (fs.existsSync(repoDir)) {
+      fs.rmSync(repoDir, { recursive: true, force: true });
+      console.log(`✅ Archivos locales eliminados (${repoDir}).`);
+    }
   }
 
   const logFile = path.join(LOGS_DIR, `${name}.log`);

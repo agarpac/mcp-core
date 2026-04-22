@@ -15,6 +15,84 @@ export interface DaemonStatus {
   socketPath: string;
 }
 
+export interface ActiveServersInfo {
+  active: string[];
+  cached: string[];
+}
+
+/**
+ * Ask the daemon which backend processes are alive and which are in the
+ * capability cache. Resolves to null if the daemon is unreachable.
+ */
+export function queryActiveServers(socketPath: string, timeoutMs = 1000): Promise<ActiveServersInfo | null> {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(socketPath)) return resolve(null);
+    const socket = net.createConnection({ path: socketPath });
+    let buf = '';
+    const done = (value: ActiveServersInfo | null) => {
+      try { socket.destroy(); } catch {}
+      resolve(value);
+    };
+    const timer = setTimeout(() => done(null), timeoutMs);
+    socket.on('connect', () => {
+      socket.write(JSON.stringify({ type: 'getActiveServers' }) + '\n');
+    });
+    socket.on('data', (chunk) => {
+      buf += chunk.toString('utf-8');
+      const idx = buf.indexOf('\n');
+      if (idx === -1) return;
+      try {
+        const msg = JSON.parse(buf.slice(0, idx));
+        clearTimeout(timer);
+        if (msg?.type === 'getActiveServers_response') {
+          done({ active: msg.active ?? [], cached: msg.cached ?? [] });
+        } else {
+          done(null);
+        }
+      } catch {
+        clearTimeout(timer);
+        done(null);
+      }
+    });
+    socket.on('error', () => { clearTimeout(timer); done(null); });
+  });
+}
+
+/**
+ * Ask the daemon to stop a specific backend process. The process returns to
+ * idle state and will be relaunched lazily on the next tool call.
+ * Resolves to false if the daemon is unreachable or the server is not running.
+ */
+export function stopBackend(socketPath: string, name: string, timeoutMs = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(socketPath)) return resolve(false);
+    const socket = net.createConnection({ path: socketPath });
+    let buf = '';
+    const done = (value: boolean) => {
+      try { socket.destroy(); } catch {}
+      resolve(value);
+    };
+    const timer = setTimeout(() => done(false), timeoutMs);
+    socket.on('connect', () => {
+      socket.write(JSON.stringify({ type: 'stopBackend', name }) + '\n');
+    });
+    socket.on('data', (chunk) => {
+      buf += chunk.toString('utf-8');
+      const idx = buf.indexOf('\n');
+      if (idx === -1) return;
+      try {
+        const msg = JSON.parse(buf.slice(0, idx));
+        clearTimeout(timer);
+        done(msg?.type === 'stopBackend_response' && msg.success === true);
+      } catch {
+        clearTimeout(timer);
+        done(false);
+      }
+    });
+    socket.on('error', () => { clearTimeout(timer); done(false); });
+  });
+}
+
 /**
  * Ping the daemon over its UNIX socket. Resolves to null if unreachable.
  * The daemon responds to `{"type":"ping"}` with `{"type":"pong","uptime":N}`
@@ -89,7 +167,10 @@ function formatUptime(ms: number): string {
 }
 
 export async function runStatus(): Promise<void> {
-  const daemon = await getDaemonStatus();
+  const [daemon, activeInfo] = await Promise.all([
+    getDaemonStatus(),
+    queryActiveServers(DAEMON_SOCKET),
+  ]);
 
   console.log('\n== mcp-core status ==\n');
   console.log(`Daemon:  ${daemon.running ? '🟢 running' : '🔴 stopped'}`);
@@ -104,8 +185,11 @@ export async function runStatus(): Promise<void> {
   for (const name of names) {
     const cfg = servers[name];
     if (!cfg) continue;
-    const linked = cfg.clientsLinked?.join(', ') || '—';
-    console.log(`  • ${name}  (${cfg.command} ${(cfg.args || []).join(' ')})  →  ${linked}`);
+    const isActive = activeInfo?.active.includes(name) ?? false;
+    const isCached = activeInfo?.cached.includes(name) ?? false;
+    const stateIcon = isActive ? '🟢' : isCached ? '🟡' : '⚪';
+    const stateLabel = isActive ? 'running' : isCached ? 'cached' : 'idle';
+    console.log(`  ${stateIcon} ${name.padEnd(16)}  [${stateLabel}]  ${cfg.command} ${(cfg.args || []).join(' ')}`);
   }
 
   console.log('\nClients detected on this OS:');

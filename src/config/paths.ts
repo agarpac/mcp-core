@@ -135,7 +135,7 @@ const vscodeAdapter: ClientAdapter = {
 // Entries use array-form command (`[cmd, ...args]`) and a `type` field.
 const opencodeAdapter: ClientAdapter = {
   id: 'opencode',
-  displayName: 'OpenCode',
+  displayName: 'OpenCode (cli)',
   configPath: {
     darwin: path.join(HOME, '.config', 'opencode', 'opencode.json'),
     linux: path.join(HOME, '.config', 'opencode', 'opencode.json'),
@@ -170,19 +170,15 @@ const claudeDesktopAdapter: ClientAdapter = {
   removeServer: defaultRemoveServer('mcpServers'),
 };
 
-// --- Claude Code (project scope) --------------------------------------------
-// Claude Code supports multiple scopes (project / user). We start with the
-// project scope, which writes to `./.mcp.json` in the current working
-// directory. User scope (~/.claude.json with nested `projects.<cwd>.mcpServers`
-// for project-local, or top-level `mcpServers` for user-global) is intentionally
-// out of scope for this iteration — it can be added as a separate adapter.
+// --- Claude Code (user scope) ------------------------------------------------
+// Claude Code CLI stores user-global MCP servers in ~/.claude.json under the
+// top-level `mcpServers` key — same path on macOS and Linux.
 const claudeCodeAdapter: ClientAdapter = {
   id: 'claudeCode',
-  displayName: 'Claude Code (project)',
+  displayName: 'Claude Code',
   configPath: {
-    // Both OSes resolve to the project root — Claude Code is OS-agnostic here.
-    darwin: path.resolve(process.cwd(), '.mcp.json'),
-    linux: path.resolve(process.cwd(), '.mcp.json'),
+    darwin: path.join(HOME, '.claude.json'),
+    linux: path.join(HOME, '.claude.json'),
   },
   rootKey: 'mcpServers',
   serialize: ({ command, args }) => ({ command, args }),

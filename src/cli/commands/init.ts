@@ -1,8 +1,10 @@
 import fs from 'fs';
 import os from 'os';
+import path from 'path';
+import { spawnSync } from 'child_process';
 import { Command } from 'commander';
 import { CLIENT_ADAPTERS, ClientAdapter, getClientConfigPath } from '../../config/paths';
-import { ConfigStore } from '../../config/store';
+import { ConfigStore, type McpServerKind } from '../../config/store';
 
 /* ------------------------------------------------------------------ *
  * Constants                                                           *
@@ -62,6 +64,45 @@ function normaliseEntry(raw: unknown): NormalisedEntry | null {
 }
 
 /* ------------------------------------------------------------------ *
+ * Command normalisation                                               *
+ * ------------------------------------------------------------------ */
+
+/**
+ * If `command` is an absolute path to a system binary that is also reachable
+ * by name via PATH, return just the name. This makes imported entries portable
+ * across machines and Homebrew prefix differences (/opt/homebrew vs /usr/local).
+ *
+ * Paths that contain node_modules or end in .js are left untouched — they are
+ * not system binaries and must keep their full path to work.
+ */
+export function normalizeCommand(command: string): string {
+  if (!path.isAbsolute(command)) return command;
+  if (command.includes('node_modules') || command.endsWith('.js')) return command;
+  const name = path.basename(command);
+  const result = spawnSync('which', [name], { encoding: 'utf-8' });
+  return result.status === 0 ? name : command;
+}
+
+/**
+ * Infers the install kind from a (possibly normalized) command and its args.
+ * Used when importing servers from other clients where we don't have explicit
+ * install metadata.
+ *
+ * Rules (in priority order):
+ *   uvx  → command is 'uvx'
+ *   npm  → command is 'npx', 'node', or any part contains 'node_modules'
+ *   local → command is still an absolute path (not resolved by normalizeCommand)
+ *   system → bare binary name that is none of the above
+ */
+export function inferKind(command: string, args: string[]): McpServerKind {
+  if (command === 'uvx') return 'uvx';
+  if (command === 'npx' || command === 'node') return 'npm';
+  if ([command, ...args].some((p) => p.includes('node_modules'))) return 'npm';
+  if (path.isAbsolute(command)) return 'local';
+  return 'system';
+}
+
+/* ------------------------------------------------------------------ *
  * Per-client init logic                                               *
  * ------------------------------------------------------------------ */
 
@@ -105,10 +146,12 @@ function processClient(
 
     // Import new server into ConfigStore if not already registered
     if (!coreConfig.servers[serverName]) {
+      const normalizedCommand = normalizeCommand(parsed.command);
       ConfigStore.addServer(serverName, {
-        command: parsed.command,
+        command: normalizedCommand,
         args: parsed.args,
         ...(parsed.env ? { env: parsed.env } : {}),
+        kind: inferKind(normalizedCommand, parsed.args),
       });
       migratedServers.push(serverName);
     }

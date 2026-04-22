@@ -174,7 +174,7 @@ describe('UI Command API Routes', () => {
 
       const cursorClient = response.body.find((c: any) => c.name === 'cursor');
       expect(cursorClient).toBeDefined();
-      expect(cursorClient.status).toBe('Installed');
+      expect(cursorClient.installed).toBe(true);
     });
   });
 

@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
-import { ConfigStore } from '../../config/store';
+import { ConfigStore, type McpServerKind } from '../../config/store';
 import { SERVERS_DIR } from '../../config/paths';
 import { getProgressBus } from '../../utils/progress-singleton';
 import { decorateError } from '../../utils/hints';
@@ -82,20 +82,48 @@ export async function runInstall(
       command = 'node';
       args = [source];
     } else {
-      // npm (default)
+      // npm: all packages share a single node_modules in SERVERS_DIR
       serverName = serverName || source.split('/').pop() || source;
-      command = 'npx';
-      args = ['-y', source];
+      fs.mkdirSync(SERVERS_DIR, { recursive: true });
+
+      // Bootstrap a package.json so npm install is deterministic
+      const rootPkg = path.join(SERVERS_DIR, 'package.json');
+      if (!fs.existsSync(rootPkg)) {
+        fs.writeFileSync(rootPkg, JSON.stringify({ private: true, dependencies: {} }, null, 2));
+      }
+
+      bus.emit('npm-install', `npm install ${source}`);
+      await execa('npm', ['install', source], { cwd: SERVERS_DIR });
+
+      // Resolve entry point from the installed package's manifest
+      const pkgDir = path.join(SERVERS_DIR, 'node_modules', source);
+      const pkgJson = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf-8')) as Record<string, unknown>;
+
+      let entry: string;
+      if (pkgJson['bin']) {
+        const bin = pkgJson['bin'];
+        const rel = typeof bin === 'string' ? bin : (Object.values(bin as Record<string, string>)[0] ?? 'index.js');
+        entry = path.join(pkgDir, rel);
+      } else if (typeof pkgJson['main'] === 'string') {
+        entry = path.join(pkgDir, pkgJson['main'] as string);
+      } else {
+        entry = path.join(pkgDir, 'index.js');
+      }
+
+      command = 'node';
+      args = [entry];
     }
 
     bus.emit('register', `registering ${serverName} in mcp-core`);
+    const KIND_MAP: Record<Exclude<InstallMethod, 'auto'>, McpServerKind> = {
+      npm: 'npm', uvx: 'uvx', git: 'git', local: 'local',
+    };
     ConfigStore.addServer(serverName, {
       command,
       args,
       ...(env ? { env } : {}),
-      clientsLinked: opts.clients && opts.clients.length > 0
-        ? opts.clients
-        : ['opencode', 'cursor', 'claudeDesktop', 'vscode', 'claudeCode'],
+      ...(method === 'npm' ? { pkgName: source } : {}),
+      kind: KIND_MAP[method as Exclude<InstallMethod, 'auto'>] ?? 'npm',
     });
 
     const shouldValidate = opts.validate !== false;

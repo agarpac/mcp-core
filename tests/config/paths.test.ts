@@ -182,11 +182,11 @@ describe('paths.ts', () => {
     });
   });
 
-  describe('claudeCode adapter (project scope)', () => {
-    it('uses ./.mcp.json regardless of OS (relative to CWD)', () => {
-      // project-scope file lives at the project root; adapter returns relative path
-      expect(CLIENT_ADAPTERS.claudeCode.configPath.darwin).toBe(path.resolve(process.cwd(), '.mcp.json'));
-      expect(CLIENT_ADAPTERS.claudeCode.configPath.linux).toBe(path.resolve(process.cwd(), '.mcp.json'));
+  describe('claudeCode adapter (user scope)', () => {
+    it('uses ~/.claude.json on both macOS and Linux', () => {
+      const expected = path.join(os.homedir(), '.claude.json');
+      expect(CLIENT_ADAPTERS.claudeCode.configPath.darwin).toBe(expected);
+      expect(CLIENT_ADAPTERS.claudeCode.configPath.linux).toBe(expected);
     });
 
     it('rootKey is mcpServers', () => {

@@ -2,12 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import { CORE_CONFIG_FILE, CORE_DIR, SERVERS_DIR, LOGS_DIR } from './paths';
 
+export type McpServerKind = 'npm' | 'uvx' | 'git' | 'local' | 'system';
+
 export interface McpServerConfig {
   command: string;
   args: string[];
   env?: Record<string, string>;
-  clientsLinked?: string[]; // ej: ['cursor', 'opencode']
-  sourcePath?: string; // Ruta original si fue migrado
+  sourcePath?: string;
+  /** Original npm package name — set for npm-installed servers to enable clean npm uninstall. */
+  pkgName?: string;
+  /** How the server was installed. Omitted on entries migrated before v2. */
+  kind?: McpServerKind;
 }
 
 export interface CoreConfig {

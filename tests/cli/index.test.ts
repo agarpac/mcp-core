@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Command } from 'commander';
 import { createCLI } from '../../src/cli/index';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { version } = require('../../package.json') as { version: string };
 
 describe('createCLI', () => {
   it('returns a commander Command instance', () => {
@@ -11,7 +13,7 @@ describe('createCLI', () => {
   it('exposes the expected metadata', () => {
     const program = createCLI();
     expect(program.name()).toBe('mcp-core');
-    expect(program.version()).toBe('1.0.0');
+    expect(program.version()).toBe(version);
   });
 
   it.each(['init', 'install', 'uninstall', 'ui'])(

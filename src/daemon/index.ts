@@ -174,7 +174,7 @@ export function createDaemon(opts: DaemonOptions): Daemon {
       const timer = setTimeout(() => {
         capCallbacks.delete(id);
         reject(new Error(`cap-discovery timeout: ${method}`));
-      }, 5000);
+      }, 30000);
       capCallbacks.set(id, (result) => {
         clearTimeout(timer);
         resolve(result);
@@ -322,14 +322,19 @@ export function createDaemon(opts: DaemonOptions): Daemon {
     child.on('exit', (code) => {
       console.log(`[Daemon] Servidor ${serverName} se cerró (código ${code}).`);
       activeServers.delete(serverName);
-      for (const client of activeServer.clients) {
-        client.end();
-      }
-      if (activeServer.shutdownTimer) {
-        clearTimeout(activeServer.shutdownTimer);
-      }
+      if (activeServer.shutdownTimer) clearTimeout(activeServer.shutdownTimer);
       // Ensure the discovery promise resolves even if the process dies early
       activeServer.resolveCapabilityDiscovery({ name: serverName, tools: [], resources: [], prompts: [] });
+      // Flush queued messages as errors so clients don't hang waiting for a response
+      const errorLine = JSON.stringify({
+        jsonrpc: '2.0',
+        error: { code: -32603, message: `Backend '${serverName}' exited unexpectedly (code ${code})` },
+        id: null,
+      }) + '\n';
+      for (const client of activeServer.clients) {
+        try { client.write(errorLine); } catch { /* ignore */ }
+        client.end();
+      }
     });
 
     activeServers.set(serverName, activeServer);
@@ -347,13 +352,14 @@ export function createDaemon(opts: DaemonOptions): Daemon {
           broadcastBackendsChanged();
         })
         .catch(() => {
-          // Discovery failed — still let clients through
+          // Discovery failed — still let clients through and notify gateway
           activeServer.initialized = true;
           for (const queued of activeServer.pendingMessages) {
             child.stdin?.write(queued);
           }
           activeServer.pendingMessages = [];
           activeServer.resolveCapabilityDiscovery({ name: serverName, tools: [], resources: [], prompts: [] });
+          broadcastBackendsChanged();
         });
     } else {
       resolveCapabilityDiscovery({ name: serverName, tools: [], resources: [], prompts: [] });
@@ -393,6 +399,33 @@ export function createDaemon(opts: DaemonOptions): Daemon {
       if (msg.type === 'subscribe') {
         subscribers.add(socket);
         socket.write(JSON.stringify({ type: 'subscribed' }) + '\n');
+        return;
+      }
+
+      // Stop a specific backend process (returns it to idle; relaunches lazily on next request)
+      if (msg.type === 'stopBackend') {
+        const { name } = msg as { name?: string };
+        if (!name || !activeServers.has(name)) {
+          socket.write(JSON.stringify({ type: 'stopBackend_response', success: false, error: 'not running' }) + '\n');
+          return;
+        }
+        const srv = activeServers.get(name)!;
+        if (srv.shutdownTimer) clearTimeout(srv.shutdownTimer);
+        try { srv.process.kill('SIGTERM'); } catch { /* ignore */ }
+        activeServers.delete(name);
+        socket.write(JSON.stringify({ type: 'stopBackend_response', success: true }) + '\n');
+        return;
+      }
+
+      // Lightweight status query — returns active process names + cached capability names
+      if (msg.type === 'getActiveServers') {
+        socket.write(
+          JSON.stringify({
+            type: 'getActiveServers_response',
+            active: Array.from(activeServers.keys()),
+            cached: Array.from(capabilityCache.keys()),
+          }) + '\n',
+        );
         return;
       }
 

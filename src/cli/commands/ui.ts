@@ -6,11 +6,11 @@ import path from 'path';
 import process from 'process';
 import fs from 'fs';
 import { ConfigStore } from '../../config/store';
-import { DAEMON_SOCKET, CLIENT_PATHS, getClientConfigPath } from '../../config/paths';
+import { DAEMON_SOCKET, CORE_CONFIG_FILE, CLIENT_PATHS, CLIENT_ADAPTERS, LOGS_DIR, getClientConfigPath } from '../../config/paths';
 import { runInstall } from './install';
 import { runUninstall } from './uninstall';
 import { toggleClientServer } from '../injectors/index';
-import { getDaemonStatus } from './status';
+import { getDaemonStatus, queryActiveServers, stopBackend } from './status';
 import { detectRuntimes } from '../../utils/runtime';
 import { validateMcpServer } from '../../validate/handshake';
 import { getProgressBus } from '../../utils/progress-singleton';
@@ -89,6 +89,7 @@ export function createApp(options: CreateAppOptions) {
       node: process.version,
       daemonActive,
       runtimes,
+      configPath: CORE_CONFIG_FILE,
     });
   });
 
@@ -102,17 +103,20 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.get('/api/clients', (_req, res) => {
-    const clients = Object.keys(CLIENT_PATHS).map((key) => {
-      const clientName = key as keyof typeof CLIENT_PATHS;
-      const configPath = getClientConfigPath(clientName);
-      let exists = false;
-      if (configPath) exists = fs.existsSync(configPath);
-      return {
-        name: clientName,
-        configPath: configPath || 'Unsupported Platform',
-        status: exists ? 'Installed' : 'Not Installed',
-        enabled: exists,
-      };
+    const clients = Object.entries(CLIENT_ADAPTERS).map(([key, adapter]) => {
+      const configPath = getClientConfigPath(key);
+      if (!configPath || !fs.existsSync(configPath)) {
+        return { name: key, displayName: adapter.displayName, configPath: configPath ?? null, installed: false, gatewayInjected: false };
+      }
+      let gatewayInjected = false;
+      try {
+        const raw = fs.readFileSync(configPath, 'utf-8');
+        const config = raw.trim() ? JSON.parse(raw) : {};
+        const servers = adapter.readServers(config) as Record<string, any>;
+        const entry = servers['mcp-core'];
+        gatewayInjected = !!(entry && (entry.command === 'mcp-core-mcp' || (Array.isArray(entry.command) && entry.command[0] === 'mcp-core-mcp')));
+      } catch { /* unreadable config */ }
+      return { name: key, displayName: adapter.displayName, configPath, installed: true, gatewayInjected };
     });
     res.json(clients);
   });
@@ -172,6 +176,30 @@ export function createApp(options: CreateAppOptions) {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  });
+
+  app.get('/api/logs/:name', (req, res) => {
+    const { name } = req.params;
+    const lines = Math.min(parseInt((req.query.lines as string) || '100', 10), 1000);
+    const logPath = path.join(LOGS_DIR, `${name}.log`);
+    if (!fs.existsSync(logPath)) {
+      return res.json({ name, lines: [], path: logPath });
+    }
+    const content = fs.readFileSync(logPath, 'utf-8');
+    const all = content.split('\n').filter((l) => l.length > 0);
+    return res.json({ name, lines: all.slice(-lines), path: logPath });
+  });
+
+  app.post('/api/servers/:name/stop', async (req, res) => {
+    const { name } = req.params;
+    const success = await stopBackend(DAEMON_SOCKET, name);
+    if (success) return res.json({ success: true });
+    return res.status(400).json({ error: `Server '${name}' is not running` });
+  });
+
+  app.get('/api/daemon/active-servers', async (_req, res) => {
+    const info = await queryActiveServers(DAEMON_SOCKET);
+    res.json(info ?? { active: [], cached: [] });
   });
 
   app.get('/api/daemon/status', async (_req, res) => {

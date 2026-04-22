@@ -1,6 +1,8 @@
 import { SystemPanel } from './components/SystemPanel';
 import { AdvancedInstaller } from './components/AdvancedInstaller';
 import { ActiveServersMonitor } from './components/ActiveServersMonitor';
+import { ClientsPanel } from './components/ClientsPanel';
+import { WikiPanel } from './components/WikiPanel';
 
 function App() {
   return (
@@ -13,9 +15,11 @@ function App() {
           <p className="text-gray-400">Gateway MCP — all backends, one entry per client</p>
         </header>
 
+        <WikiPanel />
         <SystemPanel />
         <AdvancedInstaller />
         <ActiveServersMonitor />
+        <ClientsPanel />
       </div>
     </div>
   );

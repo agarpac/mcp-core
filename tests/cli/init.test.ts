@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// ── child_process mock ────────────────────────────────────────────────────────
+const spawnSyncMock = vi.hoisted(() => vi.fn());
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return { ...actual, default: { ...actual }, spawnSync: spawnSyncMock };
+});
+
 // ── os.platform() → always 'darwin' ──────────────────────────────────────────
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
@@ -76,7 +83,7 @@ vi.mock('../../src/config/paths', () => ({
   getClientConfigPath: vi.fn(() => '/tmp/test-cursor-mcp.json'),
 }));
 
-import { runInit } from '../../src/cli/commands/init';
+import { runInit, normalizeCommand, inferKind } from '../../src/cli/commands/init';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -133,10 +140,10 @@ describe('runInit — legacy server migration', () => {
     );
   });
 
-  it('migrates legacy servers to ConfigStore', () => {
+  it('migrates legacy servers to ConfigStore with kind', () => {
     runInit({ selfBinary: 'mcp-core-mcp' });
-    expect(storeMocks.addServer).toHaveBeenCalledWith('memory', expect.objectContaining({ command: 'npx' }));
-    expect(storeMocks.addServer).toHaveBeenCalledWith('postgres', expect.objectContaining({ command: 'uvx' }));
+    expect(storeMocks.addServer).toHaveBeenCalledWith('memory', expect.objectContaining({ command: 'npx', kind: 'npm' }));
+    expect(storeMocks.addServer).toHaveBeenCalledWith('postgres', expect.objectContaining({ command: 'uvx', kind: 'uvx' }));
   });
 
   it('returns migratedServers list', () => {
@@ -261,6 +268,63 @@ describe('runInit — error handling', () => {
     const r = results.find((x) => x.client === 'cursor')!;
     expect(r.status).toBe('error');
     expect(r.error).toMatch(/ENOSPC/);
+  });
+});
+
+describe('normalizeCommand', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns non-absolute commands unchanged', () => {
+    expect(normalizeCommand('npx')).toBe('npx');
+    expect(normalizeCommand('uvx')).toBe('uvx');
+    expect(normalizeCommand('node')).toBe('node');
+  });
+
+  it('returns paths containing node_modules unchanged', () => {
+    const p = '/external/node_modules/mcp-qase/build/index.js';
+    expect(normalizeCommand(p)).toBe(p);
+  });
+
+  it('returns .js paths unchanged', () => {
+    const p = '/opt/homebrew/bin/server.js';
+    expect(normalizeCommand(p)).toBe(p);
+  });
+
+  it('normalizes absolute path to binary name when found in PATH', () => {
+    spawnSyncMock.mockReturnValue({ status: 0 });
+    expect(normalizeCommand('/opt/homebrew/bin/engram')).toBe('engram');
+  });
+
+  it('keeps absolute path when binary is not found in PATH', () => {
+    spawnSyncMock.mockReturnValue({ status: 1 });
+    const p = '/usr/local/bin/custom-binary';
+    expect(normalizeCommand(p)).toBe(p);
+  });
+});
+
+describe('inferKind', () => {
+  it('returns uvx for uvx command', () => {
+    expect(inferKind('uvx', ['mcp-server-postgres'])).toBe('uvx');
+  });
+
+  it('returns npm for npx command', () => {
+    expect(inferKind('npx', ['-y', '@scope/pkg'])).toBe('npm');
+  });
+
+  it('returns npm for node command', () => {
+    expect(inferKind('node', ['/some/path/index.js'])).toBe('npm');
+  });
+
+  it('returns npm when any part contains node_modules', () => {
+    expect(inferKind('node', ['/ext/node_modules/mcp-qase/dist/index.js'])).toBe('npm');
+  });
+
+  it('returns local for remaining absolute paths', () => {
+    expect(inferKind('/opt/homebrew/bin/unknown', [])).toBe('local');
+  });
+
+  it('returns system for bare binary name (after normalization)', () => {
+    expect(inferKind('engram', ['mcp', '--tools=agent'])).toBe('system');
   });
 });
 

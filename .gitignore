@@ -37,3 +37,4 @@ vitest.config.d.ts.map
 # AI / Agent specific
 .claude/
 .atl/
+.playwright-mcp/

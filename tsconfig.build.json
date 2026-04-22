@@ -3,8 +3,9 @@
     "rootDir": "./src",
     "outDir": "./dist",
 
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "6.0",
     "target": "es2022",
     "lib": ["es2022"],
     "types": ["node"],
@@ -16,10 +17,8 @@
     "noUncheckedIndexedAccess": true,
     "strict": true,
     "isolatedModules": true,
-    "moduleDetection": "force",
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "noEmit": true
+    "esModuleInterop": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests", "dashboard", "src/**/*.test.ts", "src/**/*.test.tsx"]

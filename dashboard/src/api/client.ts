@@ -54,6 +54,12 @@ export interface SystemInfo {
   node?: string;
   daemonActive?: boolean;
   runtimes?: Record<string, RuntimeInfo>;
+  configPath?: string;
+}
+
+export interface ActiveServersInfo {
+  active: string[];
+  cached: string[];
 }
 
 export interface ValidationResult {
@@ -73,17 +79,21 @@ export interface ProgressEvent {
   timestamp: number;
 }
 
+export type McpServerKind = 'npm' | 'uvx' | 'git' | 'local' | 'system';
+
 export interface ServerSummary {
   command: string;
   args: string[];
+  kind?: McpServerKind;
   clientsLinked?: string[];
 }
 
 export interface ClientInfo {
   name: string;
-  status: string;
-  configPath: string;
-  enabled: boolean;
+  displayName: string;
+  configPath: string | null;
+  installed: boolean;
+  gatewayInjected: boolean;
 }
 
 export function fetchSystem(): Promise<SystemInfo> {
@@ -120,6 +130,29 @@ export function toggleClient(body: { serverName: string; clientName: string; ena
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   }).then(handle<{ success: boolean }>);
+}
+
+export interface ServerLogsInfo {
+  name: string;
+  lines: string[];
+  path: string;
+}
+
+export function stopServer(name: string): Promise<{ success: boolean }> {
+  return fetch(`/api/servers/${encodeURIComponent(name)}/stop`, {
+    method: 'POST',
+    headers: authHeaders(),
+  }).then(handle<{ success: boolean }>);
+}
+
+export function fetchActiveServers(): Promise<ActiveServersInfo> {
+  return fetch('/api/daemon/active-servers', { headers: authHeaders() }).then(handle<ActiveServersInfo>);
+}
+
+export function fetchLogs(name: string, lines = 100): Promise<ServerLogsInfo> {
+  return fetch(`/api/logs/${encodeURIComponent(name)}?lines=${lines}`, { headers: authHeaders() }).then(
+    handle<ServerLogsInfo>
+  );
 }
 
 export function validateServer(body: { name: string }): Promise<ValidationResult> {
