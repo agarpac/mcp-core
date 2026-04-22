@@ -406,8 +406,43 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
     opts._backendClientFactory ??
     ((p, name, s) => RealBackendClient.connect(p, name, s));
 
+  /** How long (ms) a backend connection can sit idle before the gateway closes it.
+   *  Allows the daemon's own auto-shutdown timer to fire and kill the backend process. */
+  const POOL_IDLE_MS = 30_000;
+
   let metaClient: DaemonMetaClient | null = null;
   const backendPool = new Map<string, BackendClient>();
+  const poolIdleTimers = new Map<string, NodeJS.Timeout>();
+  const poolActiveCounts = new Map<string, number>();
+
+  function cancelPoolIdleTimer(backendName: string): void {
+    const t = poolIdleTimers.get(backendName);
+    if (t) { clearTimeout(t); poolIdleTimers.delete(backendName); }
+  }
+
+  function schedulePoolIdleTimer(backendName: string): void {
+    cancelPoolIdleTimer(backendName);
+    const t = setTimeout(() => {
+      poolIdleTimers.delete(backendName);
+      const client = backendPool.get(backendName);
+      if (client) { client.close(); backendPool.delete(backendName); }
+    }, POOL_IDLE_MS);
+    if (typeof (t as any).unref === 'function') (t as any).unref();
+    poolIdleTimers.set(backendName, t);
+  }
+
+  async function withBackendClient<T>(backendName: string, fn: (c: BackendClient) => Promise<T>): Promise<T> {
+    cancelPoolIdleTimer(backendName);
+    const client = await getOrCreateBackendClient(backendName);
+    poolActiveCounts.set(backendName, (poolActiveCounts.get(backendName) ?? 0) + 1);
+    try {
+      return await fn(client);
+    } finally {
+      const remaining = (poolActiveCounts.get(backendName) ?? 1) - 1;
+      poolActiveCounts.set(backendName, remaining);
+      if (remaining === 0) schedulePoolIdleTimer(backendName);
+    }
+  }
 
   // Current tool/resource/prompt registries (rebuilt on every backends_changed)
   type ToolEntry = { name: string; description?: string; inputSchema: Record<string, unknown> };
@@ -465,11 +500,9 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
     }
 
     try {
-      const client = await getOrCreateBackendClient(dispatch.backendName);
-      const result = await client.sendRequest('tools/call', {
-        name: dispatch.originalName,
-        arguments: args,
-      });
+      const result = await withBackendClient(dispatch.backendName, (c) =>
+        c.sendRequest('tools/call', { name: dispatch.originalName, arguments: args }),
+      );
       return result ?? { content: [] };
     } catch (err: unknown) {
       return fail(err);
@@ -486,8 +519,9 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
     if (!dispatch) {
       throw new Error(`Unknown resource: ${uri}`);
     }
-    const client = await getOrCreateBackendClient(dispatch.backendName);
-    return client.sendRequest('resources/read', { uri: dispatch.originalUri }) as any;
+    return withBackendClient(dispatch.backendName, (c) =>
+      c.sendRequest('resources/read', { uri: dispatch.originalUri }),
+    ) as any;
   });
 
   mcpServer.setRequestHandler(ListPromptsRequestSchema, async () => ({
@@ -501,8 +535,9 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
     if (!dispatch) {
       throw new Error(`Unknown prompt: ${name}`);
     }
-    const client = await getOrCreateBackendClient(dispatch.backendName);
-    return client.sendRequest('prompts/get', { name: dispatch.originalName, arguments: args }) as any;
+    return withBackendClient(dispatch.backendName, (c) =>
+      c.sendRequest('prompts/get', { name: dispatch.originalName, arguments: args }),
+    ) as any;
   });
 
   /* ---- Registry helpers ---- */
@@ -575,6 +610,8 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
       const newNames = new Set(backends.map((b) => b.name));
       for (const [name, client] of backendPool) {
         if (!newNames.has(name)) {
+          cancelPoolIdleTimer(name);
+          poolActiveCounts.delete(name);
           client.close();
           backendPool.delete(name);
         }
@@ -616,6 +653,9 @@ export function createGatewayServer(opts: GatewayOptions = {}): GatewayServer {
   }
 
   async function stop(): Promise<void> {
+    for (const t of poolIdleTimers.values()) clearTimeout(t);
+    poolIdleTimers.clear();
+    poolActiveCounts.clear();
     for (const client of backendPool.values()) client.close();
     backendPool.clear();
     metaClient?.close();

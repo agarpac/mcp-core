@@ -24,8 +24,8 @@ const ENTRIES: Entry[] = [
         <p>
           Proceso en segundo plano que actúa como gestor de procesos MCP. Cuando un cliente pide una
           herramienta, el daemon arranca el servidor correspondiente si no estaba en marcha, hace el
-          handshake y devuelve el resultado. Si nadie lo usa durante un tiempo, el proceso se para solo
-          para no consumir recursos.
+          handshake y devuelve el resultado. Si un backend lleva ~5 minutos sin recibir llamadas, el daemon
+          mata su proceso automáticamente (pasa a <strong>cached</strong>) para no consumir recursos.
         </p>
         <p>
           <strong>No necesitas arrancarlo manualmente.</strong> El gateway (<code>mcp-core-mcp</code>) lo
@@ -40,8 +40,8 @@ const ENTRIES: Entry[] = [
     q: 'Estados: idle / cached / running',
     a: (
       <ul className="space-y-1.5">
-        <li><span className="inline-block w-2 h-2 rounded-full bg-gray-500 mr-2 align-middle" /><strong>idle</strong> — el servidor está registrado pero su proceso no existe. El daemon lo arrancará en cuanto llegue una petición de herramienta.</li>
-        <li><span className="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-2 align-middle" /><strong>cached</strong> — las herramientas están en memoria pero el proceso no está activo todavía. La primera llamada real lo iniciará.</li>
+        <li><span className="inline-block w-2 h-2 rounded-full bg-gray-500 mr-2 align-middle" /><strong>idle</strong> — el servidor está registrado pero nunca ha arrancado en esta sesión del daemon. No hay proceso ni capabilities en memoria. El daemon lo arrancará (y descubrirá sus herramientas) en cuanto llegue la primera petición.</li>
+        <li><span className="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-2 align-middle" /><strong>cached</strong> — el proceso fue matado para ahorrar RAM (por inactividad o por Pause), pero el daemon conserva sus capabilities en memoria. La próxima llamada lo relanza al instante sin necesidad de redescubrir sus herramientas.</li>
         <li><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 align-middle" /><strong>running</strong> — el proceso está vivo y puede responder llamadas de herramienta de inmediato.</li>
       </ul>
     ),
@@ -51,9 +51,9 @@ const ENTRIES: Entry[] = [
     a: (
       <p>
         Envía una señal <code>SIGTERM</code> al proceso del servidor y lo elimina del registro de activos del
-        daemon. El servidor vuelve a estado <strong>idle</strong>: no consume CPU ni memoria. La próxima vez
-        que un cliente llame a cualquiera de sus herramientas, el daemon lo relanzará automáticamente — sin
-        que tengas que hacer nada.
+        daemon. El servidor pasa a estado <strong>cached</strong>: no consume CPU ni memoria, pero el daemon
+        conserva sus capabilities en memoria. La próxima vez que un cliente llame a cualquiera de sus
+        herramientas, el daemon lo relanzará automáticamente — sin que tengas que hacer nada.
       </p>
     ),
   },

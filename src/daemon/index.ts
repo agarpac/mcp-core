@@ -350,6 +350,17 @@ export function createDaemon(opts: DaemonOptions): Daemon {
           }
           activeServer.pendingMessages = [];
           broadcastBackendsChanged();
+          // Backend started for capability discovery with no clients — start idle timer now
+          if (activeServer.clients.size === 0 && !activeServer.shutdownTimer) {
+            activeServer.shutdownTimer = setTimeout(() => {
+              if (activeServer.clients.size === 0) {
+                console.log(`[Daemon] Servidor ${serverName} sin uso tras discovery. Apagando...`);
+                try { activeServer.process.kill('SIGTERM'); } catch { /* ignore */ }
+                activeServers.delete(serverName);
+              }
+            }, autoShutdownMs);
+            if (typeof activeServer.shutdownTimer.unref === 'function') activeServer.shutdownTimer.unref();
+          }
         })
         .catch(() => {
           // Discovery failed — still let clients through and notify gateway
@@ -360,6 +371,16 @@ export function createDaemon(opts: DaemonOptions): Daemon {
           activeServer.pendingMessages = [];
           activeServer.resolveCapabilityDiscovery({ name: serverName, tools: [], resources: [], prompts: [] });
           broadcastBackendsChanged();
+          if (activeServer.clients.size === 0 && !activeServer.shutdownTimer) {
+            activeServer.shutdownTimer = setTimeout(() => {
+              if (activeServer.clients.size === 0) {
+                console.log(`[Daemon] Servidor ${serverName} sin uso tras discovery. Apagando...`);
+                try { activeServer.process.kill('SIGTERM'); } catch { /* ignore */ }
+                activeServers.delete(serverName);
+              }
+            }, autoShutdownMs);
+            if (typeof activeServer.shutdownTimer.unref === 'function') activeServer.shutdownTimer.unref();
+          }
         });
     } else {
       resolveCapabilityDiscovery({ name: serverName, tools: [], resources: [], prompts: [] });

@@ -58,7 +58,7 @@ mcp-core-mcp       mcp-core-mcp       mcp-core-mcp   ← gateway shim (1 por cli
 ```
 
 - **Gateway shim (`mcp-core-mcp`)**: binario MCP ligero. Se conecta al daemon, suscribe a cambios de backends y reexpone todas las tools/resources/prompts con prefijo (`<backend>__<name>`). Si el daemon no está corriendo, lo arranca automáticamente.
-- **Daemon**: supervisa y multiplexa backends MCP de forma lazy (los inicia al recibir la primera petición). Notifica a todos los shims cuando se instala o desinstala un servidor — los clientes que soportan `list_changed` reciben las nuevas tools sin reiniciar.
+- **Daemon**: supervisa y multiplexa backends MCP. Cuando el gateway conecta, arranca todos los backends configurados para descubrir sus capabilities. Si un backend lleva ~5 minutos sin recibir llamadas, el daemon mata su proceso automáticamente para ahorrar RAM (las capabilities quedan en caché para relanzarlo al instante). Notifica a todos los shims cuando se instala o desinstala un servidor — los clientes que soportan `list_changed` reciben las nuevas tools sin reiniciar.
 - **CLI (`mcp-core`)**: instalar, desinstalar, migrar, inicializar y lanzar el dashboard.
 
 ### Prefijado de capabilities
@@ -191,7 +191,7 @@ Los servidores de tipo sistema (Homebrew, binarios del PATH) se omiten automáti
 - **System Panel** — OS, Node, estado del daemon y grid de runtimes detectados.
 - **Advanced Installer** — instalar con stream SSE de progreso en tiempo real.
 - **Active MCP Servers** — lista de backends registrados con:
-  - **Estado en vivo** (polling cada 5s): `● running` proceso activo, `● cached` tools en caché pero proceso no iniciado, `● idle` en reposo (normal entre sesiones, el daemon lo inicia al recibir la primera petición).
+  - **Estado en vivo** (polling cada 5s): `● running` proceso activo, `● cached` proceso parado pero capabilities en memoria (se relanza automáticamente al recibir la primera llamada), `● idle` sin proceso y sin capabilities (solo ocurre antes del primer arranque del daemon en una sesión).
   - **Running from** — comando exacto que usa el daemon para arrancar el servidor.
   - **Health** — handshake MCP bajo demanda: muestra número de tools y, al hacer click, la lista de nombres.
   - **Logs** — últimas 100 líneas del stderr del servidor en un modal.
@@ -237,7 +237,7 @@ La UI está endurecida contra DNS rebinding: bind a `127.0.0.1`, validación de 
 ```bash
 git clone <repo> && cd mcp-core
 npm run setup       # install + build + npm link
-npx vitest run      # Suite completa (256 tests)
+npx vitest run      # Suite completa (258 tests)
 ```
 
 `npm run setup` deja los dos binarios (`mcp-core`, `mcp-core-mcp`) disponibles en el PATH.
