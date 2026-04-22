@@ -22,7 +22,7 @@ npx mcp-core init
 npx mcp-core install @modelcontextprotocol/server-memory
 
 # 3) (Opcional) Si ya tenías servidores MCP configurados en otros clientes,
-#     mígralos a ~/.mcp-core/servers/ para que sean independientes de esos clientes
+#     se migran a ~/.mcp-core/servers/ para que sean independientes de esos clientes
 #     usa `--dry-run` para ver exactamente qué se haría sin tocar nada.
 npx mcp-core migrate
 
