@@ -12,32 +12,30 @@ El cliente ve herramientas prefijadas por servidor: `context7__get_library_docs`
 ## ⚡ Quick Start
 
 ```bash
-# 1) Bootstrap: inyecta la entrada del gateway en todos los clientes detectados
+# 1) Instala mcp-core globalmente
+#     El binario `mcp-core-mcp` debe estar en el PATH para que los clientes de IA
+#     puedan arrancar el gateway cuando lo necesiten.
+npm install -g mcp-core
+
+# 2) Bootstrap: inyecta la entrada del gateway en todos los clientes detectados
 #     Detecta las entradas legacy, las importa al registro central y reemplaza todo
 #     por la única entrada del gateway. Un backup `.backup` se crea antes de sobreescribir.
-npx mcp-core init
+mcp-core init
 
-# 2) (Opcional) Instala un servidor MCP — disponible en todos los clientes al instante
-#     o haz esto desde el paso 4 desde la interfaz UI.
-npx mcp-core install @modelcontextprotocol/server-memory
+# 3) (Opcional) Instala un servidor MCP — disponible en todos los clientes al instante
+#     o haz esto desde el paso 5 desde la interfaz UI.
+mcp-core install @modelcontextprotocol/server-memory
 
-# 3) (Opcional) Si ya tenías servidores MCP configurados en otros clientes,
-#     se migran a ~/.mcp-core/servers/ para que sean independientes de esos clientes
-#     usa `--dry-run` para ver exactamente qué se haría sin tocar nada.
-npx mcp-core migrate
+# 4) (Opcional) Si ya tenías servidores MCP configurados en otros clientes,
+#     se migran a ~/.mcp-core/servers/ para que sean independientes de esos clientes.
+#     Usa `--dry-run` para ver exactamente qué se haría sin tocar nada.
+mcp-core migrate
 
-# 4) (Opcional) Abre el dashboard web para gestionar servidores visualmente.
-npx mcp-core ui
+# 5) (Opcional) Abre el dashboard web para gestionar servidores visualmente.
+mcp-core ui
 ```
 
 El daemon se arranca solo la primera vez que un cliente conecta y queda vivo en segundo plano. No es necesario reiniciar el cliente si éste soporta `tools/list_changed`.
-
-¿Lo quieres permanente?
-
-```bash
-npm i -g mcp-core
-mcp-core status
-```
 
 ---
 
