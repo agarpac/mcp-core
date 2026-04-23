@@ -35,7 +35,7 @@ mcp-core migrate
 mcp-core ui
 ```
 
-El daemon se arranca solo la primera vez que un cliente conecta y queda vivo en segundo plano. No es necesario reiniciar el cliente si éste soporta `tools/list_changed`.
+El daemon se arranca solo la primera vez que un cliente (claude, opencode, etc) conecta y queda vivo en segundo plano. No es necesario reiniciar el cliente si éste soporta `tools/list_changed`.
 
 ---
 
